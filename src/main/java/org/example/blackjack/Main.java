@@ -23,6 +23,9 @@ public class Main extends Application {
     private Scene gameScene;
 
     private Shoe shoe;
+
+    private HBox PlayerCardBox;
+    private HBox DealerCardBox;
     private GameManager gameManager;
     @Override
     public void start(Stage stage) throws Exception {
@@ -87,6 +90,18 @@ public class Main extends Application {
         cardDeckImageView.setFitHeight(250);
         cardDeckImageView.setTranslateX(1500);
 
+        HBox playerCardBox = new HBox(10);
+        playerCardBox.setAlignment(Pos.CENTER);
+        AnchorPane.setBottomAnchor(playerCardBox, 100.0); // Position above buttons
+
+        HBox dealerCardBox = new HBox(10);
+        dealerCardBox.setAlignment(Pos.CENTER);
+        AnchorPane.setTopAnchor(dealerCardBox, 100.0); // Position near top
+
+        PlayerCardBox = playerCardBox;
+        DealerCardBox = dealerCardBox;
+
+
         // Create buttons
         Button hitButton = new Button("Hit");
         hitButton.setOnAction(e -> handleHit());
@@ -113,7 +128,7 @@ public class Main extends Application {
         buttonBox.prefWidthProperty().bind(root.widthProperty());
 
         // Add background, card deck, and buttons to the scene
-        root.getChildren().addAll(backgroundImageView, cardDeckImageView, buttonBox);
+        root.getChildren().addAll(backgroundImageView, cardDeckImageView, buttonBox, playerCardBox, dealerCardBox);
         AnchorPane.setBottomAnchor(buttonBox, 20.0); // Position buttonBox at the bottom
 
         return new Scene(root, 1200, 800);
@@ -135,8 +150,9 @@ public class Main extends Application {
 
         shoe = new Shoe(playDecks);
 
-        gameManager = new GameManager(shoe, gameScene);
+        gameManager = new GameManager(shoe, gameScene, PlayerCardBox, DealerCardBox);
         gameManager.InitialDeal();
+        gameManager.UpdateScene();
 
         primaryStage.show();
     }

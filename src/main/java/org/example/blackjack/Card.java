@@ -32,6 +32,8 @@ public class Card{
         return isConcealed ? -1 : value;
     }
 
+    public  int peek(){return  value;}
+
     public void setConcealed(boolean concealed) {
         isConcealed = concealed;
     }

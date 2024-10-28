@@ -1,10 +1,20 @@
 package org.example.blackjack;
 
+import javafx.animation.KeyFrame;
+import javafx.animation.PauseTransition;
+import javafx.animation.Timeline;
+import javafx.application.Platform;
 import javafx.scene.Scene;
+import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonType;
+import javafx.scene.image.ImageView;
+import javafx.scene.layout.HBox;
+import javafx.util.Duration;
 
 import java.util.*;
 
 public class GameManager {
+    private HBox playerCardBox, dealerCardBox;
     private int playerTotal;
     private ArrayList<Card> playerCards;
     //For Splits
@@ -21,39 +31,98 @@ public class GameManager {
 
     private Shoe shoe;
 
-    public GameManager(Shoe shoe, Scene gameScene){
+    public GameManager(Shoe shoe, Scene gameScene, HBox playerCardBox, HBox dealerCardBox) {
         this.gameScene = gameScene;
         this.shoe = shoe;
+        this.playerCardBox = playerCardBox;
+        this.dealerCardBox = dealerCardBox;
         firstHandOfShoe = true;
     }
 
-    private void UpdateScene(){
+    public void UpdateScene() {
+        playerCardBox.getChildren().clear();
+        for (Card card : playerCards) {
+            ImageView cardImageView = new ImageView(card.getImage());
+            cardImageView.setFitHeight(100);
+            cardImageView.setPreserveRatio(true);
+            playerCardBox.getChildren().add(cardImageView);
+        }
 
+        dealerCardBox.getChildren().clear();
+        for (Card card : dealerCards) {
+            ImageView cardImageView = new ImageView(card.getImage());
+            cardImageView.setFitHeight(100);
+            cardImageView.setPreserveRatio(true);
+            dealerCardBox.getChildren().add(cardImageView);
+        }
     }
 
-    private void dealersTurn(){
-        //flip dealers first card
+
+    private void dealersTurn() {
+        // Reveal the dealer's first concealed card
         dealerCards.getFirst().setConcealed(false);
         dealerTotal = getTotal(dealerCards);
-        while (dealerTotal < 17 && dealerTotal != -1){
-            System.out.println("dealer total: " + dealerTotal);
-            dealerHit();
+        UpdateScene();
+
+        if(playerTotal == -1){
+            showOutcomeDialog();
+            return;
         }
-        decideWinner();
-        Deal();
+
+        // Prepare a Timeline to handle each card draw and scene update
+        Timeline timeline = new Timeline();
+        timeline.setCycleCount(Timeline.INDEFINITE);
+
+        // Define what happens in each frame of the Timeline
+        timeline.getKeyFrames().add(new KeyFrame(Duration.seconds(1), event -> {
+            // Check if dealer needs to hit
+            if (dealerTotal < 17 && dealerTotal != -1) {
+                dealerHit(); // Draw a card and update dealerTotal
+                UpdateScene();
+            } else {
+                // Dealer is done hitting; show the outcome dialog
+                timeline.stop();
+                showOutcomeDialog();
+            }
+        }));
+
+        // Start the timeline for the dealer's turn animations
+        timeline.play();
     }
 
-    public void decideWinner(){
+    // Method to show outcome dialog
+    private void showOutcomeDialog() {
+        String result = decideWinner();
+
+        Platform.runLater(() -> {
+            Alert outcomeAlert = new Alert(Alert.AlertType.INFORMATION, "", ButtonType.OK);
+            outcomeAlert.setTitle("Hand Result");
+            outcomeAlert.setHeaderText(result);
+            outcomeAlert.setContentText("Click Continue to start the next hand.");
+
+            outcomeAlert.showAndWait().ifPresent(response -> {
+                if (response == ButtonType.OK) {
+                    Deal();  // Start the next hand
+                }
+            });
+        });
+    }
+
+
+    public String decideWinner(){
         if(hasSplit){//check each split hand individually
             for(int t : splitTotals){
                 System.out.println("Player: " + t);
                 System.out.println("Dealer: " + dealerTotal);
                 if(dealerTotal > 21 || (dealerTotal < t && t <= 21)){//player wins
                     System.out.println("player wins");
+                    return "You Win!";
                 } else if(dealerTotal == t) {//push
                     System.out.println("Push");
+                    return "Push!";
                 } else {//dealer wins
                     System.out.println("Dealer wins");
+                    return "Dealer Wins";
                 }
             }
         }
@@ -61,16 +130,20 @@ public class GameManager {
         System.out.println("Dealer: " + dealerTotal);
         if(dealerTotal > 21 || (dealerTotal < playerTotal && playerTotal <= 21)){//player wins
             System.out.println("player wins");
+            return "You Win!";
         } else if(dealerTotal == playerTotal) {//push
             System.out.println("Push");
+            return "Push!";
         } else {//dealer wins
             System.out.println("Dealer wins");
+            return "Dealer Wins";
         }
     }
 
     public void dealerHit(){
         dealerCards.add(shoe.drawCard());
         dealerTotal = getTotal(dealerCards);
+        UpdateScene();
     }
 
     public void Hit(){
@@ -99,10 +172,10 @@ public class GameManager {
             playerTotal = getTotal(playerCards);
             System.out.println(playerTotal);
             if(playerTotal == -1){//bust
-                decideWinner();
-                Deal();
+                dealersTurn();
             }
         }
+        UpdateScene();
     }
 
     public void Stand(){
@@ -114,6 +187,7 @@ public class GameManager {
                 }
             }
         }
+        UpdateScene();
         dealersTurn();
     }
 
@@ -140,6 +214,7 @@ public class GameManager {
             return;
         }
         Hit();
+        UpdateScene();
         dealersTurn();
     }
 
@@ -182,57 +257,104 @@ public class GameManager {
         } else{
             System.out.println("Cannot Split this hand");
         }
+        UpdateScene();
     }
 
     public void Surrender(){
         Deal();
     }
 
-    public void InitialDeal(){
-        if(firstHandOfShoe){//discard first card
+    public void InitialDeal() {
+        // Reset player and dealer hands, initialize discard rule if needed
+        playerCards = new ArrayList<>();
+        dealerCards = new ArrayList<>();
+
+        if (firstHandOfShoe) {  // Discard first card if it's the first hand
             shoe.drawCard();
             firstHandOfShoe = false;
         }
-        playerCards = new ArrayList<>();
-        dealerCards = new ArrayList<>();
 
-        playerCards.add(shoe.drawCard());
+        // Timeline to handle sequential dealing with new order
+        Timeline dealTimeline = new Timeline();
+        dealTimeline.setCycleCount(4); // Total of four cards to deal
 
-        Card dealerCard = shoe.drawCard();
-        dealerCard.setConcealed(true);
-        dealerCards.add(dealerCard);
+        // Define alternating dealing order for player and dealer
+        dealTimeline.getKeyFrames().add(new KeyFrame(Duration.seconds(1), event -> {
+            if (playerCards.size() <= dealerCards.size()) {
+                // Deal to player if player has equal or fewer cards than dealer
+                playerCards.add(shoe.drawCard());
+            } else {
+                // Deal to dealer otherwise
+                Card dealerCard = shoe.drawCard();
+                if (dealerCards.isEmpty()) {  // Conceal the dealer's first card
+                    dealerCard.setConcealed(true);
+                }
+                dealerCards.add(dealerCard);
+            }
 
-        playerCards.add(shoe.drawCard());
+            // Update the scene after each card is dealt
+            UpdateScene();
+        }));
 
-        dealerCards.add(shoe.drawCard());
+        // After all cards are dealt, calculate totals
+        dealTimeline.setOnFinished(event -> {
+            playerTotal = getTotal(playerCards);
+            dealerTotal = getTotal(dealerCards);
+            System.out.println("Player: " + playerTotal);
+            System.out.println("Dealer: " + dealerTotal);
+            if((playerCards.getFirst().getValue() == 1 && playerCards.get(1).getValue() == 10) || (playerCards.getFirst().getValue() == 10 && playerCards.get(1).getValue() == 1)) {//player BlackJack
+                showOutcomeDialog();
+            }
+            if((dealerCards.get(1).peek() == 1 && dealerCards.getFirst().peek() == 10) || (dealerCards.get(1).peek() == 10 && dealerCards.getFirst().peek() == 1)){//dealer BlackJack
+                showOutcomeDialog();
+            }
+        });
 
-        playerTotal = getTotal(playerCards);
-        dealerTotal = getTotal(dealerCards);
-        System.out.println("Player: " + playerTotal);
-        System.out.println("Dealer: " + dealerTotal);
+        // Start the dealing timeline
+        dealTimeline.play();
     }
 
-    public void Deal(){
-        if(hasSplit){
-            hasSplit=false;
-        }
+    public void Deal() {
+        // Reset hands and apply similar sequential dealing order as in InitialDeal
         playerCards = new ArrayList<>();
         dealerCards = new ArrayList<>();
 
-        playerCards.add(shoe.drawCard());
+        Timeline dealTimeline = new Timeline();
+        dealTimeline.setCycleCount(4); // Total of four cards to deal
 
-        Card dealerCard = shoe.drawCard();
-        dealerCard.setConcealed(true);
-        dealerCards.add(dealerCard);
+        // Define alternating dealing action
+        dealTimeline.getKeyFrames().add(new KeyFrame(Duration.seconds(1), event -> {
+            if (playerCards.size() <= dealerCards.size()) {
+                // Deal to player if player has equal or fewer cards than dealer
+                playerCards.add(shoe.drawCard());
+            } else {
+                // Deal to dealer otherwise
+                Card dealerCard = shoe.drawCard();
+                if (dealerCards.isEmpty()) {
+                    dealerCard.setConcealed(true);
+                }
+                dealerCards.add(dealerCard);
+            }
 
-        playerCards.add(shoe.drawCard());
+            // Update the scene after each card is dealt
+            UpdateScene();
+        }));
 
-        dealerCards.add(shoe.drawCard());
+        // After all cards are dealt, calculate totals
+        dealTimeline.setOnFinished(event -> {
+            playerTotal = getTotal(playerCards);
+            dealerTotal = getTotal(dealerCards);
+            System.out.println("Player: " + playerTotal);
+            System.out.println("Dealer: " + dealerTotal);
+            if((playerCards.getFirst().getValue() == 1 && playerCards.get(1).getValue() == 10) || (playerCards.getFirst().getValue() == 10 && playerCards.get(1).getValue() == 1)) {//player BlackJack
+                showOutcomeDialog();
+            }
+            if((dealerCards.get(1).peek() == 1 && dealerCards.getFirst().peek() == 10) || (dealerCards.get(1).peek() == 10 && dealerCards.getFirst().peek() == 1)){//dealer BlackJack
+                dealersTurn();
+            }
+        });
 
-        playerTotal = getTotal(playerCards);
-        dealerTotal = getTotal(dealerCards);
-        System.out.println("Player: " + playerTotal);
-        System.out.println("Dealer: " + dealerTotal);
+        dealTimeline.play();
     }
 
     /**
