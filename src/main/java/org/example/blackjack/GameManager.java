@@ -1,7 +1,6 @@
 package org.example.blackjack;
 
 import javafx.animation.KeyFrame;
-import javafx.animation.PauseTransition;
 import javafx.animation.Timeline;
 import javafx.application.Platform;
 import javafx.scene.Scene;
@@ -18,14 +17,15 @@ public class GameManager {
     private int playerTotal;
     private ArrayList<Card> playerCards;
     //For Splits
-    private ArrayList<ArrayList<Card>> splitCards;
-    private ArrayList<Integer> splitTotals;
-    private ArrayList<Boolean> splitHandFinished;
+    private ArrayList<Card>[] splitHands;//array gets flipped on table so first index is right-most on table
     private  boolean hasSplit;
+    private ArrayList<HBox> splitCardBoxes;
+    private int currentHandIndex;
+    private int[] splitTotals;
+    private int numberOfSplitHands = 0;
     //End of Splits
     private int dealerTotal;
     private ArrayList<Card> dealerCards;
-
     private boolean firstHandOfShoe;
     private Scene gameScene;
 
@@ -41,13 +41,26 @@ public class GameManager {
 
     public void UpdateScene() {
         playerCardBox.getChildren().clear();
-        for (Card card : playerCards) {
-            ImageView cardImageView = new ImageView(card.getImage());
-            cardImageView.setFitHeight(100);
-            cardImageView.setPreserveRatio(true);
-            playerCardBox.getChildren().add(cardImageView);
+        if(hasSplit){
+            for(int i = 0; i < splitCardBoxes.size(); i++){
+                splitCardBoxes.get(i).getChildren().clear();
+                for(Card card : splitHands[i]){
+                    ImageView cardImageView = new ImageView(card.getImage());
+                    cardImageView.setFitHeight(100);
+                    cardImageView.setPreserveRatio(true);
+                    splitCardBoxes.get(i).getChildren().add(cardImageView);
+                }
+                splitCardBoxes.get(i).setStyle(i == currentHandIndex ? "-fx-border-color: gold;" : "-fx-border-color: transparent;");
+                playerCardBox.getChildren().add(splitCardBoxes.get(i));
+            }
+        } else {
+            for (Card card : playerCards) {
+                ImageView cardImageView = new ImageView(card.getImage());
+                cardImageView.setFitHeight(100);
+                cardImageView.setPreserveRatio(true);
+                playerCardBox.getChildren().add(cardImageView);
+            }
         }
-
         dealerCardBox.getChildren().clear();
         for (Card card : dealerCards) {
             ImageView cardImageView = new ImageView(card.getImage());
@@ -92,40 +105,63 @@ public class GameManager {
 
     // Method to show outcome dialog
     private void showOutcomeDialog() {
-        String result = decideWinner();
+        if (hasSplit) {
+            // Collect outcomes for each split hand
+            StringBuilder splitResults = new StringBuilder("Split Hand Results:\n");
 
-        Platform.runLater(() -> {
-            Alert outcomeAlert = new Alert(Alert.AlertType.INFORMATION, "", ButtonType.OK);
-            outcomeAlert.setTitle("Hand Result");
-            outcomeAlert.setHeaderText(result);
-            outcomeAlert.setContentText("Click Continue to start the next hand.");
+            for (int i = 0; i < numberOfSplitHands; i++) {
+                splitResults.append("Hand ").append(i + 1).append(": ").append(decideWinner(i)).append("\n");
+            }
 
-            outcomeAlert.showAndWait().ifPresent(response -> {
-                if (response == ButtonType.OK) {
-                    Deal();  // Start the next hand
-                }
+            Platform.runLater(() -> {
+                Alert outcomeAlert = new Alert(Alert.AlertType.INFORMATION, "", ButtonType.OK);
+                outcomeAlert.setTitle("All Split Hand Results");
+                outcomeAlert.setHeaderText("Results for Each Split Hand");
+                outcomeAlert.setContentText(splitResults.toString());
+
+                outcomeAlert.showAndWait().ifPresent(response -> {
+                    if (response == ButtonType.OK) {
+                        Deal();  // Start the next hand
+                    }
+                });
             });
-        });
+        } else {
+            // No split, show a single outcome for the regular hand
+            String result = decideWinner();
+
+            Platform.runLater(() -> {
+                Alert outcomeAlert = new Alert(Alert.AlertType.INFORMATION, "", ButtonType.OK);
+                outcomeAlert.setTitle("Hand Result");
+                outcomeAlert.setHeaderText(result);
+                outcomeAlert.setContentText("Click Continue to start the next hand.");
+
+                outcomeAlert.showAndWait().ifPresent(response -> {
+                    if (response == ButtonType.OK) {
+                        Deal();  // Start the next hand
+                    }
+                });
+            });
+        }
     }
 
 
     public String decideWinner(){
-        if(hasSplit){//check each split hand individually
-            for(int t : splitTotals){
-                System.out.println("Player: " + t);
-                System.out.println("Dealer: " + dealerTotal);
-                if(dealerTotal > 21 || (dealerTotal < t && t <= 21)){//player wins
-                    System.out.println("player wins");
-                    return "You Win!";
-                } else if(dealerTotal == t) {//push
-                    System.out.println("Push");
-                    return "Push!";
-                } else {//dealer wins
-                    System.out.println("Dealer wins");
-                    return "Dealer Wins";
-                }
-            }
+        System.out.println("Player: " + playerTotal);
+        System.out.println("Dealer: " + dealerTotal);
+        if(dealerTotal > 21 || (dealerTotal < playerTotal && playerTotal <= 21)){//player wins
+            System.out.println("player wins");
+            return "You Win!";
+        } else if(dealerTotal == playerTotal) {//push
+            System.out.println("Push");
+            return "Push!";
+        } else {//dealer wins
+            System.out.println("Dealer wins");
+            return "Dealer Wins";
         }
+    }
+
+    public String decideWinner(int hand){
+        int playerTotal = getTotal(splitHands[hand]);
         System.out.println("Player: " + playerTotal);
         System.out.println("Dealer: " + dealerTotal);
         if(dealerTotal > 21 || (dealerTotal < playerTotal && playerTotal <= 21)){//player wins
@@ -149,22 +185,16 @@ public class GameManager {
     public void Hit(){
         if(hasSplit){
             //find first split hand that isn't finished
-            int index = -1;
-            for(int i = 0; i < splitHandFinished.size(); i++){
-                if(!splitHandFinished.get(i)){//hand not finished so hit for this hand
-                    index = i;
-                    break;
+            splitHands[currentHandIndex].add(shoe.drawCard());
+            splitCardBoxes.get(currentHandIndex).getChildren().add(new ImageView(splitHands[currentHandIndex].getLast().getImage()));
+            if(getTotal(splitHands[currentHandIndex]) == -1){//bust move to next hand or dealer turn
+                currentHandIndex++;
+                if(currentHandIndex != numberOfSplitHands){
+                    splitHands[currentHandIndex].add(shoe.drawCard());
+                    splitCardBoxes.get(currentHandIndex).getChildren().add(new ImageView(splitHands[currentHandIndex].getLast().getImage()));
                 }
-            }
-            if(index != -1){
-                splitCards.get(index).add(shoe.drawCard());
-                splitTotals.set(index, getTotal(splitCards.get(index)));
-                System.out.println(splitTotals.get(index));
-                if(splitTotals.get(index) == -1 || splitTotals.get(index) > 21){//bust
-                    splitHandFinished.set(index, true);
-                    if(index == splitHandFinished.size()-1){//all split hands finished
-                        dealersTurn();
-                    }
+                if(currentHandIndex == numberOfSplitHands){//out of hands to play
+                    dealersTurn();
                 }
             }
         } else {
@@ -180,33 +210,28 @@ public class GameManager {
 
     public void Stand(){
         if(hasSplit){
-            for(int i = 0; i < splitHandFinished.size(); i++){
-                if(!splitHandFinished.get(i)){
-                    splitHandFinished.set(i, true);
-                    if(i != splitHandFinished.size()-1) return;//still have additional hands to finish
-                }
+            currentHandIndex++;
+            if(currentHandIndex != numberOfSplitHands){
+                splitHands[currentHandIndex].add(shoe.drawCard());
+                splitCardBoxes.get(currentHandIndex).getChildren().add(new ImageView(splitHands[currentHandIndex].getLast().getImage()));
             }
+            UpdateScene();
+            if(currentHandIndex == numberOfSplitHands){//out of hands to play
+                dealersTurn();
+            }
+        } else{
+            UpdateScene();
+            dealersTurn();
         }
-        UpdateScene();
-        dealersTurn();
     }
 
     public void Double(){
         if(hasSplit){
-            for(int i = 0; i < splitHandFinished.size(); i++){
-                if(!splitHandFinished.get(i)){
-                    if(splitCards.get(i).size() != 2){
-                        System.out.println("Cannot Double with more than 2 cards");
-                        return;
-                    } else if (i == splitHandFinished.size()-1){//all split hands done, dealer turn
-                        Hit();
-                        dealersTurn();
-                    } else {
-                        Hit();
-                        System.out.println(splitTotals.get(i));
-                        splitHandFinished.set(i, true);
-                    }
-                }
+            if(splitHands[currentHandIndex].size() != 2){
+                System.out.println("Cannot Double with more than 2 cards");
+                return;
+            }else {
+                Hit();
             }
         }
         if(playerCards.size() != 2){
@@ -218,46 +243,105 @@ public class GameManager {
         dealersTurn();
     }
 
-    public void Split(){
-        //add check for multiple splits, not just first hand
-        if(hasSplit){//find hand that can split
-            for(int i = 0; i < splitCards.size(); i++){
-                if(splitCards.get(i).getFirst() == splitCards.get(i).get(1)){//split found
-                    splitCards.add((new ArrayList<>()));//create new hand
-                    splitCards.getLast().add(splitCards.get(i).getLast());//add last card of hand being split to new hand
-                    splitCards.get(i).removeLast();//remove last card because it was added to new hand
-                    //Add 1 new card to each split hand
-                    splitCards.get(i).add(shoe.drawCard());
-                    splitCards.getLast().add(shoe.drawCard());
-                    splitHandFinished.add(false);//make last hand not finished
-                    //set new totals of the split hands with the new card
-                    splitTotals.add(getTotal(splitCards.getLast()));
-                    splitCards.set(i, splitCards.get(i));
-                    System.out.println(splitTotals.get(i));
-                }
+    private void realignSplitCardBoxes(){
+        splitCardBoxes.add(new HBox());
+        int index = 0;
+        for(ArrayList<Card> hand : splitHands){
+            if(hand == null) break;
+            splitCardBoxes.get(index).getChildren().clear();
+            for(Card c : hand){
+                splitCardBoxes.get(index).getChildren().add(new ImageView(c.getImage()));
             }
-            System.out.println("No split hands Detected");
-        }
-        if(playerCards.getFirst().getValue() == playerCards.getLast().getValue()){//can split first hand
-            hasSplit = true;
-            splitCards = new ArrayList<>();
-            splitTotals = new ArrayList<>();
-            splitHandFinished = new ArrayList<>();
-            splitCards.add(new ArrayList<Card>());
-            splitCards.add(new ArrayList<Card>());
-            splitCards.getFirst().add(playerCards.getFirst());
-            splitCards.getFirst().add(shoe.drawCard());
-            splitCards.getLast().add(playerCards.getLast());
-            splitCards.getLast().add(shoe.drawCard());
-            splitHandFinished.add(false);
-            splitHandFinished.add(false);
-            splitTotals.add(getTotal(splitCards.getFirst()));
-            splitTotals.add(getTotal(splitCards.getLast()));
-            System.out.println(splitTotals.getFirst());
-        } else{
-            System.out.println("Cannot Split this hand");
+            index++;
         }
         UpdateScene();
+    }
+
+    private boolean reorderSplits(){
+        if(numberOfSplitHands+1 <= splitHands.length){//can add split [[A,3,7],[J,K],[10],[9],[]] -> [[A,3,7],[J],[k],[10],[9]]
+            ArrayList<Card> next = new ArrayList<>();
+            boolean foundSplit = false;
+            for(int i = 0; i < splitHands.length; i++){
+                if(i == currentHandIndex){//hand to split
+                    next.add(splitHands[i].getLast());
+                    splitHands[i].removeLast();
+                    foundSplit = true;
+                }
+                if(foundSplit){
+                    ArrayList<Card> temp = splitHands[i];
+                    splitHands[i] = next;
+                    next = temp;
+                }
+            }
+            numberOfSplitHands++;
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    public void Split(){
+        if(!hasSplit && playerCards.getFirst().getValue() == playerCards.getLast().getValue()){//has split and is first split
+            //initialize splitHands
+            hasSplit = true;
+            splitHands = new ArrayList[5];
+            splitHands[0] = new ArrayList<Card>();
+            splitHands[1] = new ArrayList<Card>();
+            numberOfSplitHands = 2;
+
+            splitTotals = new int[5];
+
+            //initialize splitCardBoxes
+            splitCardBoxes = new ArrayList<>();
+            splitCardBoxes.add(new HBox());
+            splitCardBoxes.add(new HBox());
+
+            // Use a Timeline to add delay for drawing new cards
+            Timeline timeline = new Timeline(
+                    new KeyFrame(Duration.seconds(0), event -> {//add first card to split hand 1
+                        //add each card from player hand to split hands
+                        //top card goes to right most hand
+                        splitHands[0].add(playerCards.getLast());
+                        splitCardBoxes.getFirst().getChildren().add(new ImageView(splitHands[0].getFirst().getImage()));
+                        //Bottom card goes to left hand
+                        splitHands[1].add(playerCards.getFirst());
+                        splitCardBoxes.getLast().getChildren().add(new ImageView(splitHands[1].getFirst().getImage()));
+                        currentHandIndex = 0;//start at the right
+                        UpdateScene();
+                    }),
+                    new KeyFrame(Duration.seconds(1), event -> {//add second card of hand to split hand 2
+                       splitHands[0].add(shoe.drawCard());
+                        UpdateScene();
+                    })
+            );
+
+            timeline.setCycleCount(1);
+            timeline.setOnFinished(event -> {
+                splitTotals[0] = getTotal(splitHands[0]);
+                splitTotals[1] = getTotal(splitHands[1]);
+            });
+            timeline.play();
+        } else if(hasSplit){
+            if(splitHands[currentHandIndex].getFirst().getValue() == splitHands[currentHandIndex].getLast().getValue()){//current hand has split
+                //split hand and move last card to new hand to current hand
+                if(reorderSplits()){//split successful
+                    realignSplitCardBoxes();
+                    Timeline timeline = new Timeline(
+                            new KeyFrame(Duration.seconds(1), event -> {
+                                splitHands[currentHandIndex].add(shoe.drawCard());
+                                splitCardBoxes.get(currentHandIndex).getChildren().add(new ImageView(splitHands[currentHandIndex].getLast().getImage()));
+                                UpdateScene();
+                            })
+                    );
+                    timeline.setCycleCount(1);
+                    timeline.play();
+                } else {
+                    System.out.println("Split limit reached");
+                }
+            }
+        } else {
+            System.out.println("Cannot split current hand");
+        }
     }
 
     public void Surrender(){
@@ -265,6 +349,8 @@ public class GameManager {
     }
 
     public void InitialDeal() {
+        //Reset Split
+        hasSplit = false;
         // Reset player and dealer hands, initialize discard rule if needed
         playerCards = new ArrayList<>();
         dealerCards = new ArrayList<>();
@@ -315,6 +401,9 @@ public class GameManager {
     }
 
     public void Deal() {
+        //Reset Split
+        hasSplit = false;
+        UpdateScene();
         // Reset hands and apply similar sequential dealing order as in InitialDeal
         playerCards = new ArrayList<>();
         dealerCards = new ArrayList<>();
