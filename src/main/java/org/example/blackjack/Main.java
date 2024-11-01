@@ -98,9 +98,12 @@ public class Main extends Application {
         dealerCardBox.setAlignment(Pos.CENTER);
         AnchorPane.setTopAnchor(dealerCardBox, 100.0); // Position near top
 
+        // Center playerCardBox and dealerCardBox horizontally
+        playerCardBox.translateXProperty().bind(root.widthProperty().subtract(playerCardBox.widthProperty()).divide(2));
+        dealerCardBox.translateXProperty().bind(root.widthProperty().subtract(dealerCardBox.widthProperty()).divide(2));
+
         PlayerCardBox = playerCardBox;
         DealerCardBox = dealerCardBox;
-
 
         // Create buttons
         Button hitButton = new Button("Hit");

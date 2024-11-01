@@ -8,6 +8,7 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.StackPane;
 import javafx.util.Duration;
 
 import java.util.*;
@@ -41,34 +42,62 @@ public class GameManager {
 
     public void UpdateScene() {
         playerCardBox.getChildren().clear();
-        if(hasSplit){
-            for(int i = 0; i < splitCardBoxes.size(); i++){
-                splitCardBoxes.get(i).getChildren().clear();
-                for(Card card : splitHands[i]){
+        dealerCardBox.getChildren().clear();
+
+        if (hasSplit) {
+            for (int i = 0; i < splitCardBoxes.size(); i++) {
+                StackPane stackPane = new StackPane();
+                ArrayList<Card> hand = splitHands[i];
+                for (int j = 0; j < hand.size(); j++) {
+                    Card card = hand.get(j);
                     ImageView cardImageView = new ImageView(card.getImage());
                     cardImageView.setFitHeight(100);
                     cardImageView.setPreserveRatio(true);
-                    splitCardBoxes.get(i).getChildren().add(cardImageView);
+
+                    // Set offsets for stacking
+                    cardImageView.setTranslateX(j * -0.5 * cardImageView.getFitWidth());
+                    cardImageView.setTranslateY(j * -0.5 * cardImageView.getFitHeight());
+
+                    stackPane.getChildren().add(cardImageView);
                 }
+                splitCardBoxes.get(i).getChildren().clear();
+                splitCardBoxes.get(i).getChildren().add(stackPane);
                 splitCardBoxes.get(i).setStyle(i == currentHandIndex ? "-fx-border-color: gold;" : "-fx-border-color: transparent;");
                 playerCardBox.getChildren().add(splitCardBoxes.get(i));
             }
         } else {
-            for (Card card : playerCards) {
+            StackPane stackPane = new StackPane();
+            for (int j = 0; j < playerCards.size(); j++) {
+                Card card = playerCards.get(j);
                 ImageView cardImageView = new ImageView(card.getImage());
                 cardImageView.setFitHeight(100);
                 cardImageView.setPreserveRatio(true);
-                playerCardBox.getChildren().add(cardImageView);
+
+                // Apply the stacking offsets for the player
+                cardImageView.setTranslateX(j * -0.5 * cardImageView.getFitWidth());
+                cardImageView.setTranslateY(j * -0.5 * cardImageView.getFitHeight());
+
+                stackPane.getChildren().add(cardImageView);
             }
+            playerCardBox.getChildren().add(stackPane);
         }
-        dealerCardBox.getChildren().clear();
-        for (Card card : dealerCards) {
+
+        StackPane dealerStackPane = new StackPane();
+        for (int j = 0; j < dealerCards.size(); j++) {
+            Card card = dealerCards.get(j);
             ImageView cardImageView = new ImageView(card.getImage());
             cardImageView.setFitHeight(100);
             cardImageView.setPreserveRatio(true);
-            dealerCardBox.getChildren().add(cardImageView);
+
+            // Apply stacking offsets for the dealer
+            cardImageView.setTranslateX(j * 0.5 * cardImageView.getFitWidth());
+            cardImageView.setTranslateY(-j * -0.5 * cardImageView.getFitHeight());
+
+            dealerStackPane.getChildren().add(cardImageView);
         }
+        dealerCardBox.getChildren().add(dealerStackPane);
     }
+
 
 
     private void dealersTurn() {
